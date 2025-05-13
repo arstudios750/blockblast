@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Block Blast!</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      background: #101820;
+      color: white;
+      font-family: 'Segoe UI', sans-serif;
+      text-align: center;
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    h1 { margin-bottom: 10px; }
+
+    #game {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 30px;
+    }
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(8, 50px);
+      grid-template-rows: repeat(8, 50px);
+      gap: 4px;
+      background: #1b2735;
+      padding: 10px;
+      border-radius: 15px;
+      box-shadow: 0 0 20px #000;
+      position: relative;
+    }
+    .cell {
+      width: 50px;
+      height: 50px;
+      background: #2f3e51;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+    .filled {
+      background: linear-gradient(145deg, #ffcc00, #ff6600);
+      box-shadow: 0 0 10px 4px rgba(255, 204, 0, 0.7);
+      animation: popIn 0.3s ease;
+    }
+    @keyframes popIn {
+      0% { transform: scale(0.3); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .glow {
+      animation: glowPulse 1.2s infinite;
+    }
+    @keyframes glowPulse {
+      0%, 100% {
+        box-shadow: 0 0 10px 2px lime;
+        background: #88ff88;
+      }
+      50% {
+        box-shadow: 0 0 20px 6px limegreen;
+        background: #aaffaa;
+      }
+    }
+    .clear-animation {
+      animation: clearFade 0.4s ease forwards;
+    }
+    @keyframes clearFade {
+      0% { transform: scale(1); opacity: 1; }
+      100% { transform: scale(1.5); opacity: 0; }
+    }
+    #pieces {
+      display: flex;
+      flex-direction: row;
+      gap: 20px;
+      margin-bottom: 10px;
+    }
+    .piece {
+      display: grid;
+      grid-template-columns: repeat(3, 40px);
+      grid-template-rows: repeat(3, 40px);
+      gap: 4px;
+      cursor: grab;
+    }
+    .block {
+      width: 40px;
+      height: 40px;
+      background: #00e6e6;
+      border-radius: 6px;
+      box-shadow: 0 0 8px #00ffff;
+    }
+    #score {
+      margin-top: 10px;
+      font-size: 24px;
+      font-weight: bold;
+    }
+    #gameOver {
+      font-size: 28px;
+      color: #ff4444;
+      margin-top: 20px;
+      display: none;
+    }
+    #restartBtn {
+      margin-top: 10px;
+      padding: 10px 20px;
+      font-size: 16px;
+      background: #444;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    #restartBtn:hover {
+      background: #666;
+    }
+  </style>
+</head>
+<body>
+  <h1>Block Blast!</h1>
+  <div id="game">
+    <div id="pieces"></div>
+    <div id="grid"></div>
+    <div id="score">Score: 0</div>
+    <div id="gameOver">Game Over!</div>
+    <button id="restartBtn" onclick="restartGame()">Restart</button>
+  </div>
+
+  <script>
+    const gridSize = 8;
+    const grid = document.getElementById("grid");
+    const pieces = document.getElementById("pieces");
+    const scoreDisplay = document.getElementById("score");
+    const gameOverDisplay = document.getElementById("gameOver");
+    const restartBtn = document.getElementById("restartBtn");
+    let score = 0;
+    const cells = [];
+
+    const SHAPES = [
+      [[1]],
+      [[1, 1]],
+      [[1], [1]],
+      [[1, 1], [1, 0]],
+      [[1, 1], [1, 1]],
+      [[1, 1, 1]],
+      [[0, 1, 0], [1, 1, 1]]
+    ];
+
+    // Build the grid
+    for (let i = 0; i < gridSize * gridSize; i++) {
+      const cell = document.createElement("div");
+      cell.classList.add("cell");
+      grid.appendChild(cell);
+      cells.push(cell);
+    }
+
+    function createPiece(shape) {
+      const piece = document.createElement("div");
+      piece.classList.add("piece");
+
+      for (let y = 0; y < 3; y++) {
+        for (let x = 0; x < 3; x++) {
+          const block = document.createElement("div");
+          if (shape[y] && shape[y][x]) {
+            block.classList.add("block");
+          }
+          piece.appendChild(block);
+        }
+      }
+
+      piece.draggable = true;
+      piece.dataset.shape = JSON.stringify(shape);
+      return piece;
+    }
+
+    function generatePieces() {
+      pieces.innerHTML = "";
+      for (let i = 0; i < 3; i++) {
+        const shape = JSON.parse(JSON.stringify(SHAPES[Math.floor(Math.random() * SHAPES.length)]));
+        const p = createPiece(shape);
+        pieces.appendChild(p);
+      }
+    }
+
+    function tryPlacePiece(shape, xOffset, yOffset, simulate = false) {
+      const coords = [];
+
+      for (let y = 0; y < shape.length; y++) {
+        for (let x = 0; x < shape[y].length; x++) {
+          if (shape[y][x]) {
+            const gx = x + xOffset;
+            const gy = y + yOffset;
+            const idx = gy * gridSize + gx;
+
+            if (
+              gx < 0 || gy < 0 ||
+              gx >= gridSize || gy >= gridSize ||
+              cells[idx].classList.contains("filled")
+            ) {
+              return false;
+            }
+            coords.push(idx);
+          }
+        }
+      }
+
+      if (!simulate) {
+        coords.forEach(i => cells[i].classList.add("filled"));
+      }
+
+      return true;
+    }
+
+    function hasValidMove() {
+      const piecesList = [...pieces.children];
+      for (const p of piecesList) {
+        const shape = JSON.parse(p.dataset.shape);
+        for (let y = 0; y <= gridSize - shape.length; y++) {
+          for (let x = 0; x <= gridSize - shape[0].length; x++) {
+            if (tryPlacePiece(shape, x, y, true)) {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    }
+
+    function clearLines() {
+      let cleared = false;
+
+      for (let y = 0; y < gridSize; y++) {
+        const row = [];
+        for (let x = 0; x < gridSize; x++) {
+          row.push(cells[y * gridSize + x]);
+        }
+        if (row.every(c => c.classList.contains("filled"))) {
+          cleared = true;
+          row.forEach(c => {
+            c.classList.add("clear-animation");
+            setTimeout(() => c.classList.remove("filled", "clear-animation"), 400);
+          });
+          score += 10;
+        }
+      }
+
+      for (let x = 0; x < gridSize; x++) {
+        const col = [];
+        for (let y = 0; y < gridSize; y++) {
+          col.push(cells[y * gridSize + x]);
+        }
+        if (col.every(c => c.classList.contains("filled"))) {
+          cleared = true;
+          col.forEach(c => {
+            c.classList.add("clear-animation");
+            setTimeout(() => c.classList.remove("filled", "clear-animation"), 400);
+          });
+          score += 10;
+        }
+      }
+
+      scoreDisplay.textContent = "Score: " + score;
+    }
+
+    function highlightClearable() {
+      cells.forEach(c => c.classList.remove("glow"));
+
+      for (let y = 0; y < gridSize; y++) {
+        const row = [];
+        for (let x = 0; x < gridSize; x++) {
+          row.push(cells[y * gridSize + x]);
+        }
+        if (row.every(c => c.classList.contains("filled"))) {
+          row.forEach(c => c.classList.add("glow"));
+        }
+      }
+
+      for (let x = 0; x < gridSize; x++) {
+        const col = [];
+        for (let y = 0; y < gridSize; y++) {
+          col.push(cells[y * gridSize + x]);
+        }
+        if (col.every(c => c.classList.contains("filled"))) {
+          col.forEach(c => c.classList.add("glow"));
+        }
+      }
+    }
+
+    grid.addEventListener("dragover", e => e.preventDefault());
+
+    grid.addEventListener("drop", e => {
+      e.preventDefault();
+      const shape = JSON.parse(e.dataTransfer.getData("shape"));
+      const rect = grid.getBoundingClientRect();
+      const cellSize = 50;
+      const gap = 4;
+      const x = Math.floor((e.clientX - rect.left - gap) / (cellSize + gap));
+      const y = Math.floor((e.clientY - rect.top - gap) / (cellSize + gap));
+
+      if (tryPlacePiece(shape, x, y)) {
+        generatePieces();
+        setTimeout(() => {
+          clearLines();
+          highlightClearable();
+          if (!hasValidMove()) {
+            gameOverDisplay.style.display = "block";
+            pieces.innerHTML = "";
+          }
+        }, 100);
+      }
+    });
+
+    pieces.addEventListener("dragstart", e => {
+      const piece = e.target.closest(".piece");
+      if (!piece) return;
+      e.dataTransfer.setData("shape", piece.dataset.shape);
+    });
+
+    function restartGame() {
+      cells.forEach(c => c.classList.remove("filled", "glow", "clear-animation"));
+      score = 0;
+      scoreDisplay.textContent = "Score: 0";
+      gameOverDisplay.style.display = "none";
+      generatePieces();
+      highlightClearable();
+    }
+
+    generatePieces();
+    highlightClearable();
+  </script>
+</body>
+</html>
